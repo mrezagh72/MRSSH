@@ -98,7 +98,12 @@ docker compose up -d
 echo "[8/8] Done"
 echo ""
 echo "MRSSH installed"
-echo "Panel local: http://127.0.0.1:8080"
+SERVER_IP=$(curl -4 -s https://api.ipify.org || hostname -I | awk '{print $1}')
+if [ -n "$DOMAIN" ]; then
+  echo "Panel URL: https://$DOMAIN"
+else
+  echo "Panel URL: http://$SERVER_IP:8080"
+fi
 echo "Username: $ADMIN_USER"
 echo "Password: $ADMIN_PASS"
 echo ""
