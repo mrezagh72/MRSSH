@@ -207,6 +207,94 @@ update_mrssh() {
     echo "MRSSH updated successfully"
 }
 
+
+
+backup_mrssh() {
+    BACKUP_DIR="/root/mrssh-backups"
+    mkdir -p "$BACKUP_DIR"
+
+    FILE="$BACKUP_DIR/mrssh-backup-$(date +%F-%H%M%S).tar.gz"
+
+    tar -czf "$FILE" \
+        /opt/mrssh/.env \
+        /opt/mrssh-agent/mrssh.db \
+        /etc/nginx/sites-available/mrssh \
+        /etc/ssh/sshd_config 2>/dev/null
+
+    echo
+    echo "Backup created:"
+    echo "$FILE"
+}
+
+restore_mrssh() {
+    BACKUP_DIR="/root/mrssh-backups"
+
+    mapfile -t FILES < <(find "$BACKUP_DIR" -maxdepth 1 -type f -name "*.tar.gz" | sort -r)
+
+    if [ ${#FILES[@]} -eq 0 ]; then
+        echo "No backups found"
+        return
+    fi
+
+    echo
+    echo "Available Backups"
+    echo "-----------------"
+
+    i=1
+    for f in "${FILES[@]}"; do
+        SIZE=$(du -h "$f" | awk '{print $1}')
+        DATE=$(date -r "$f" "+%Y-%m-%d %H:%M:%S")
+        echo "$i) $(basename "$f") [$SIZE] [$DATE]"
+        i=$((i+1))
+    done
+
+    echo
+    echo "0) Back"
+    echo
+
+    read -p "Select backup: " IDX
+
+    if [ "$IDX" = "0" ]; then
+        echo "Cancelled"
+        return
+    fi
+
+    if ! echo "$IDX" | grep -Eq '^[0-9]+$'; then
+        echo "Invalid selection"
+        return
+    fi
+
+    IDX=$((IDX-1))
+
+    if [ "$IDX" -lt 0 ] || [ "$IDX" -ge "${#FILES[@]}" ]; then
+        echo "Invalid selection"
+        return
+    fi
+
+    FILE="${FILES[$IDX]}"
+
+    echo
+    echo "Selected:"
+    echo "$(basename "$FILE")"
+    echo
+
+    read -p "Restore this backup? (y/N): " A
+
+    if [ "$A" != "y" ] && [ "$A" != "Y" ]; then
+        echo "Cancelled"
+        return
+    fi
+
+    tar -xzf "$FILE" -C /
+
+    systemctl restart mrssh-agent 2>/dev/null || true
+    systemctl restart ssh 2>/dev/null || true
+    systemctl reload nginx 2>/dev/null || true
+
+    echo
+    echo "Restore completed"
+}
+
 while true; do
     clear
 
@@ -221,6 +309,8 @@ while true; do
     echo "5) Firewall Status"
     echo "6) Change SSH Port"
     echo "7) Update MRSSH"
+    echo "8) Backup MRSSH"
+    echo "9) Restore Backup"
     echo "0) Exit"
     echo
 
@@ -234,6 +324,8 @@ while true; do
         5) ufw status ;;
         6) change_ssh_port ;;
         7) update_mrssh ;;
+        8) backup_mrssh ;;
+        9) restore_mrssh ;;
         0) exit 0 ;;
         *) echo "Invalid option" ;;
     esac
