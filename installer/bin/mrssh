@@ -82,6 +82,66 @@ show_admin_info() {
     fi
 }
 
+
+
+change_ssh_port() {
+    CUR=$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}')
+    CUR=${CUR:-22}
+
+    echo "Current SSH Port: $CUR"
+    echo "Enter new SSH port, or type b to go back"
+    read -p "New SSH Port: " NEW
+
+    if [ "$NEW" = "b" ] || [ "$NEW" = "B" ]; then
+        echo "Cancelled"
+        return
+    fi
+
+    if ! echo "$NEW" | grep -Eq '^[0-9]+$'; then
+        echo "Invalid port"
+        return
+    fi
+
+    if [ "$NEW" -lt 1 ] || [ "$NEW" -gt 65535 ]; then
+        echo "Port out of range"
+        return
+    fi
+
+    ufw allow ${NEW}/tcp
+
+    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+
+    if grep -q '^Port ' /etc/ssh/sshd_config; then
+        sed -i "s/^Port .*/Port ${NEW}/" /etc/ssh/sshd_config
+    else
+        echo "Port ${NEW}" >> /etc/ssh/sshd_config
+    fi
+
+    sshd -t || {
+        echo "Invalid SSH config"
+        cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
+        return
+    }
+
+    systemctl restart ssh
+
+    sleep 2
+
+    if ss -tulpn | grep -q ":${NEW} "; then
+        echo "SSH port changed to ${NEW}"
+
+        read -p "Remove old firewall port ${CUR}? (y/N): " A
+
+        if [ "$A" = "y" ] || [ "$A" = "Y" ]; then
+            ufw delete allow ${CUR}/tcp
+        fi
+    else
+        echo "SSH failed, rolling back"
+        cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
+        systemctl restart ssh
+    fi
+}
+
 while true; do
     clear
 
@@ -94,6 +154,7 @@ while true; do
     echo "3) Restart Services"
     echo "4) Show Admin Info"
     echo "5) Firewall Status"
+    echo "6) Change SSH Port"
     echo "0) Exit"
     echo
 
@@ -105,6 +166,7 @@ while true; do
         3) restart_services ;;
         4) show_admin_info ;;
         5) ufw status ;;
+        6) change_ssh_port ;;
         0) exit 0 ;;
         *) echo "Invalid option" ;;
     esac
