@@ -5,6 +5,7 @@ services:
     network_mode: host
     restart: unless-stopped
     env_file:
+      - /opt/mrssh/.env
       - .env
     volumes:
       - /opt/mrssh-backups:/opt/mrssh-backups
