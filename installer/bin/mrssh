@@ -1,51 +1,114 @@
 #!/bin/bash
 
-while true; do
-clear
+COMPOSE_FILE="/root/MRSSH/docker-compose.yml"
 
-echo "=================================="
-echo "           MRSSH MENU"
-echo "=================================="
-echo
-echo "1) Show Status"
-echo "2) Install SSL"
-echo "3) Restart Services"
-echo "4) Show Admin Info"
-echo "5) Firewall Status"
-echo "0) Exit"
-echo
+show_status() {
+    echo "=== MRSSH Status ==="
+    echo
+    systemctl is-active --quiet mrssh-agent && echo "Agent: active" || echo "Agent: inactive"
+    systemctl is-active --quiet fail2ban && echo "Fail2Ban: active" || echo "Fail2Ban: inactive"
+    systemctl is-active --quiet nginx && echo "Nginx: active" || echo "Nginx: inactive"
+    echo
+    curl -fsS http://127.0.0.1:8080/api/health >/dev/null && echo "Panel API: OK" || echo "Panel API: FAILED"
+}
 
-read -p "Select: " opt
+install_ssl() {
+    read -p "Domain: " DOMAIN
+    read -p "Email: " EMAIL
 
-case $opt in
+    if [ -z "$DOMAIN" ] || [ -z "$EMAIL" ]; then
+        echo "Domain and email are required"
+        return
+    fi
 
-1)
-    systemctl status mrssh-agent --no-pager
-    ;;
+    echo "[SSL] Configuring Nginx for $DOMAIN..."
 
-2)
-    echo "SSL installer coming soon"
-    ;;
+    cat > /etc/nginx/sites-available/mrssh <<EOFNGINX
+server {
+    listen 80;
+    server_name $DOMAIN;
 
-3)
+    root /var/www/mrssh;
+    index index.html;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/;
+        proxy_http_version 1.1;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 30s;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location / {
+        try_files \$uri /index.html;
+    }
+}
+EOFNGINX
+
+    ln -sf /etc/nginx/sites-available/mrssh /etc/nginx/sites-enabled/mrssh
+    nginx -t || { echo "Nginx config failed"; return; }
+    systemctl reload nginx
+
+    certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" || {
+        echo "Certbot failed"
+        return
+    }
+
+    echo
+    echo "SSL done:"
+    echo "https://$DOMAIN"
+}
+
+restart_services() {
     systemctl restart mrssh-agent
-    docker compose -f /root/MRSSH/docker-compose.yml restart backend
+    systemctl restart mrssh-traffic mrssh-limiter mrssh-expire mrssh-enforce 2>/dev/null || true
+
+    if [ -f "$COMPOSE_FILE" ]; then
+        docker compose -f "$COMPOSE_FILE" restart backend
+    fi
+
+    systemctl reload nginx
     echo "Services restarted"
-    ;;
+}
 
-4)
-    cat /opt/mrssh/.env
-    ;;
+show_admin_info() {
+    if [ -f /opt/mrssh/.env ]; then
+        grep -E '^(ADMIN_USERNAME|ADMIN_PASSWORD|MRSSH_WEB_BIND)=' /opt/mrssh/.env
+    else
+        echo "/opt/mrssh/.env not found"
+    fi
+}
 
-5)
-    ufw status
-    ;;
+while true; do
+    clear
 
-0)
-    exit 0
-    ;;
-esac
+    echo "=================================="
+    echo "           MRSSH MENU"
+    echo "=================================="
+    echo
+    echo "1) Show Status"
+    echo "2) Install SSL"
+    echo "3) Restart Services"
+    echo "4) Show Admin Info"
+    echo "5) Firewall Status"
+    echo "0) Exit"
+    echo
 
-echo
-read -p "Press Enter..."
+    read -p "Select: " opt
+
+    case "$opt" in
+        1) show_status ;;
+        2) install_ssl ;;
+        3) restart_services ;;
+        4) show_admin_info ;;
+        5) ufw status ;;
+        0) exit 0 ;;
+        *) echo "Invalid option" ;;
+    esac
+
+    echo
+    read -p "Press Enter..."
 done
