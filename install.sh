@@ -103,6 +103,7 @@ fi
 systemctl stop mrssh-agent 2>/dev/null || true
 pkill -f /opt/mrssh-agent/agent.py 2>/dev/null || true
 systemctl enable --now mrssh-agent mrssh-traffic mrssh-limiter mrssh-expire mrssh-enforce
+install -m 755 installer/bin/mrssh /usr/local/bin/mrssh
 sleep 2
 systemctl enable --now fail2ban || true
 systemctl restart fail2ban || true

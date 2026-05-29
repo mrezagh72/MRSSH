@@ -1,0 +1,51 @@
+#!/bin/bash
+
+while true; do
+clear
+
+echo "=================================="
+echo "           MRSSH MENU"
+echo "=================================="
+echo
+echo "1) Show Status"
+echo "2) Install SSL"
+echo "3) Restart Services"
+echo "4) Show Admin Info"
+echo "5) Firewall Status"
+echo "0) Exit"
+echo
+
+read -p "Select: " opt
+
+case $opt in
+
+1)
+    systemctl status mrssh-agent --no-pager
+    ;;
+
+2)
+    echo "SSL installer coming soon"
+    ;;
+
+3)
+    systemctl restart mrssh-agent
+    docker compose -f /root/MRSSH/docker-compose.yml restart backend
+    echo "Services restarted"
+    ;;
+
+4)
+    cat /opt/mrssh/.env
+    ;;
+
+5)
+    ufw status
+    ;;
+
+0)
+    exit 0
+    ;;
+esac
+
+echo
+read -p "Press Enter..."
+done
