@@ -295,6 +295,72 @@ restore_mrssh() {
     echo "Restore completed"
 }
 
+
+
+change_admin_password() {
+    read -s -p "New admin password: " PASS1
+    echo
+    read -s -p "Confirm password: " PASS2
+    echo
+
+    if [ -z "$PASS1" ]; then
+        echo "Password cannot be empty"
+        return
+    fi
+
+    if [ "$PASS1" != "$PASS2" ]; then
+        echo "Passwords do not match"
+        return
+    fi
+
+    ADMIN_PASS="$PASS1" python3 - <<'PYADMIN'
+import os, sqlite3, hashlib, secrets, time
+
+DB="/opt/mrssh-agent/mrssh.db"
+password=os.environ["ADMIN_PASS"]
+
+salt=secrets.token_hex(16)
+password_hash=hashlib.sha256((salt+password).encode()).hexdigest()
+
+con=sqlite3.connect(DB)
+con.execute("""
+CREATE TABLE IF NOT EXISTS admin_auth (
+  username TEXT PRIMARY KEY,
+  password_hash TEXT NOT NULL,
+  salt TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+)
+""")
+con.execute("""
+INSERT INTO admin_auth(username,password_hash,salt,updated_at)
+VALUES('admin',?,?,?)
+ON CONFLICT(username) DO UPDATE SET
+  password_hash=excluded.password_hash,
+  salt=excluded.salt,
+  updated_at=excluded.updated_at
+""", (password_hash, salt, int(time.time())))
+con.commit()
+con.close()
+PYADMIN
+
+    if [ -f /opt/mrssh/.env ]; then
+        sed -i "s/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=$PASS1/" /opt/mrssh/.env
+    fi
+
+    if [ -f /opt/mrssh-agent/.env ]; then
+        sed -i "s/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=$PASS1/" /opt/mrssh-agent/.env
+    fi
+
+    if [ -f /root/MRSSH/docker-compose.yml ]; then
+        docker compose -f /root/MRSSH/docker-compose.yml restart backend >/dev/null 2>&1 || true
+    fi
+
+    systemctl restart mrssh-agent 2>/dev/null || true
+
+    echo
+    echo "Admin password updated successfully"
+}
+
 while true; do
     clear
 
@@ -311,6 +377,7 @@ while true; do
     echo "7) Update MRSSH"
     echo "8) Backup MRSSH"
     echo "9) Restore Backup"
+    echo "10) Change Admin Password"
     echo "0) Exit"
     echo
 
@@ -326,6 +393,7 @@ while true; do
         7) update_mrssh ;;
         8) backup_mrssh ;;
         9) restore_mrssh ;;
+        10) change_admin_password ;;
         0) exit 0 ;;
         *) echo "Invalid option" ;;
     esac
