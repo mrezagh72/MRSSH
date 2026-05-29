@@ -55,10 +55,6 @@ if os.path.exists(META):
     except Exception as e:
         print("migration warning:", e)
 
-con.commit()
-con.close()
-print("SQLite ready:", DB)
-
 
 for col, typ in [
     ("password_plain", "TEXT DEFAULT ''"),
@@ -72,4 +68,6 @@ for col, typ in [
         pass
 
 con.commit()
+con.close()
+print("SQLite ready:", DB)
 print("SQLite migrated columns ready")
