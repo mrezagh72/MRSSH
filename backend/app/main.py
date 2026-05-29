@@ -16,6 +16,17 @@ TOKENS = {}
 AGENT = "http://127.0.0.1:9911"
 SECRET = os.getenv("MRSSH_SECRET", "change-me")
 
+
+def detect_ssh_port():
+    try:
+        out = subprocess.run(
+            "sshd -T 2>/dev/null | awk '/^port /{print $2; exit}'",
+            shell=True, capture_output=True, text=True, timeout=3
+        ).stdout.strip()
+        return out or "22"
+    except Exception:
+        return "22"
+
 DB="/opt/mrssh-agent/mrssh.db"
 
 def admin_hash(pw, salt):
