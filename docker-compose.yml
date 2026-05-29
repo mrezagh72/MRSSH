@@ -6,7 +6,6 @@ services:
     restart: unless-stopped
     env_file:
       - /opt/mrssh/.env
-      - .env
     volumes:
       - /opt/mrssh-backups:/opt/mrssh-backups
       - /opt/mrssh-agent/mrssh.db:/opt/mrssh-agent/mrssh.db:rw

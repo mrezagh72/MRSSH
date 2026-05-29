@@ -23,7 +23,7 @@ echo "[1/8] Installing packages..."
 apt-get update
 apt-get install -y \
   ca-certificates curl gnupg git nginx certbot python3-certbot-nginx \
-  python3 python3-requests python3-pip sqlite3 openssh-server fail2ban openssl rsync
+  python3 python3-requests python3-pip sqlite3 openssh-server fail2ban openssl rsync ufw
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "[2/8] Installing Docker..."
@@ -52,6 +52,7 @@ MRSSH_WEB_BIND=0.0.0.0:8080
 EOF
 
 cp "$APP_DIR/.env" "$AGENT_DIR/.env"
+cp "$APP_DIR/.env" /opt/mrssh/.env
 
 echo "[6/8] Installing agent..."
 cp "$APP_DIR/installer/agent/"*.py "$AGENT_DIR/"
@@ -96,6 +97,11 @@ systemctl daemon-reload
 systemctl enable --now mrssh-agent mrssh-traffic mrssh-limiter mrssh-expire mrssh-enforce
 systemctl enable --now fail2ban || true
 systemctl restart fail2ban || true
+ufw allow 22/tcp || true
+ufw allow 80/tcp || true
+ufw allow 443/tcp || true
+ufw allow 8080/tcp || true
+ufw --force enable || true
 systemctl enable --now mrssh-backup.timer || true
 
 echo "[7/8] Starting backend..."
@@ -146,6 +152,21 @@ EOF
 ln -sf /etc/nginx/sites-available/mrssh /etc/nginx/sites-enabled/mrssh
 nginx -t
 systemctl restart nginx
+
+echo "[CHECK] Agent..."
+sleep 2
+curl -fsS -H "X-Secret: $(grep '^MRSSH_SECRET=' /opt/mrssh/.env | cut -d= -f2-)" http://127.0.0.1:9911/dashboard >/dev/null || { echo "Agent health check failed"; exit 1; }
+
+echo "[CHECK] Backend..."
+sleep 5
+curl -fsS http://127.0.0.1:8000/health >/dev/null || { echo "Backend health check failed"; exit 1; }
+
+echo "[CHECK] Frontend..."
+test -f /var/www/mrssh/index.html || { echo "Frontend index missing"; exit 1; }
+grep -q 'id="root"' /var/www/mrssh/index.html || { echo "Frontend index invalid"; exit 1; }
+
+echo "[CHECK] Nginx..."
+curl -fsS http://127.0.0.1:8080/api/health >/dev/null || { echo "Nginx/API health check failed"; exit 1; }
 
 if [ -n "$DOMAIN" ]; then
   certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" || true
