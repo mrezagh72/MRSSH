@@ -15,6 +15,14 @@ SECRET=load_secret()
 DB="/opt/mrssh-agent/mrssh.db"
 ISP_CACHE="/opt/mrssh-agent/isp_cache.json"
 
+
+def ssh_port():
+    try:
+        out=run(["bash","-lc","sshd -T 2>/dev/null | awk '/^port /{print $2; exit}'"]).stdout.strip()
+        return out or "22"
+    except Exception:
+        return "22"
+
 IGNORE={"root","daemon","bin","sys","sync","games","man","lp","mail","news","uucp","proxy","www-data","backup","list","irc","gnats","nobody","systemd-network","systemd-resolve","messagebus","sshd","_apt","lxd","uuidd","dnsmasq","landscape","fwupd","pollinate","syslog"}
 
 def db():
@@ -173,7 +181,8 @@ def online_info():
         if not user or user=="root": continue
 
         ip="-"
-        ssout=run(["bash","-lc",f"ss -tnp | grep 'pid={pid},' | grep ':22 ' | head -1"]).stdout.strip()
+        port=ssh_port()
+        ssout=run(["bash","-lc",f"ss -tnp | grep 'pid={pid},' | grep ':{port} ' | head -1"]).stdout.strip()
         if ssout:
             cols=ssout.split()
             if len(cols)>=5:
