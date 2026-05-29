@@ -1,0 +1,13 @@
+[Unit]
+Description=MRSSH Real Traffic Accounting
+After=network.target ssh.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/mrssh-agent/traffic_worker.py
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

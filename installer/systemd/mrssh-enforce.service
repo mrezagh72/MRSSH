@@ -1,0 +1,11 @@
+[Unit]
+Description=MRSSH Limit Enforcement
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/mrssh-agent/enforce_worker.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

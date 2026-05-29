@@ -1,0 +1,14 @@
+#!/bin/bash
+set -e
+TS=$(date +"%Y%m%d-%H%M%S")
+DEST="/opt/mrssh-backups/mrssh-backup-$TS.tar.gz"
+
+tar -czf "$DEST" \
+  /opt/mrssh-agent/users_meta.json \
+  /opt/mrssh-agent/isp_cache.json \
+  /opt/mrssh-agent/agent.py \
+  /opt/mrssh-agent/traffic_worker.py \
+  /opt/mrssh-agent/session_limiter.py \
+  /opt/mrssh-agent/expire_worker.py 2>/dev/null || true
+
+echo "$DEST"
