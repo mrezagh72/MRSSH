@@ -93,6 +93,13 @@ cp "$APP_DIR/installer/systemd/"mrssh*.service /etc/systemd/system/
 cp "$APP_DIR/installer/systemd/"mrssh*.timer /etc/systemd/system/ 2>/dev/null || true
 
 systemctl daemon-reload
+
+# Remove default cloud/test user if present. It may have sudo/lxd access.
+if id linuxuser >/dev/null 2>&1; then
+  pkill -KILL -u linuxuser 2>/dev/null || true
+  userdel -r linuxuser 2>/dev/null || passwd -l linuxuser || true
+fi
+
 systemctl stop mrssh-agent 2>/dev/null || true
 pkill -f /opt/mrssh-agent/agent.py 2>/dev/null || true
 systemctl enable --now mrssh-agent mrssh-traffic mrssh-limiter mrssh-expire mrssh-enforce
