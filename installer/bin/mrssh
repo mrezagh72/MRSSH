@@ -3,13 +3,68 @@
 COMPOSE_FILE="/root/MRSSH/docker-compose.yml"
 
 show_status() {
-    echo "=== MRSSH Status ==="
+    echo "=================================="
+    echo "      MRSSH Status & Health"
+    echo "=================================="
     echo
-    systemctl is-active --quiet mrssh-agent && echo "Agent: active" || echo "Agent: inactive"
-    systemctl is-active --quiet fail2ban && echo "Fail2Ban: active" || echo "Fail2Ban: inactive"
-    systemctl is-active --quiet nginx && echo "Nginx: active" || echo "Nginx: inactive"
+
+    PANEL_URL="http://$(curl -4 -s https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}'):8080"
+    SSH_PORT=$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}')
+    SSH_PORT=${SSH_PORT:-22}
+
+    echo "Panel URL: $PANEL_URL"
+    echo "SSH Port:  $SSH_PORT"
     echo
-    curl -fsS http://127.0.0.1:8080/api/health >/dev/null && echo "Panel API: OK" || echo "Panel API: FAILED"
+
+    echo "Services:"
+    systemctl is-active --quiet ssh && echo "  SSH:       OK" || echo "  SSH:       FAILED"
+    systemctl is-active --quiet nginx && echo "  Nginx:     OK" || echo "  Nginx:     FAILED"
+    systemctl is-active --quiet fail2ban && echo "  Fail2Ban:  OK" || echo "  Fail2Ban:  FAILED"
+    systemctl is-active --quiet mrssh-agent && echo "  Agent:     OK" || echo "  Agent:     FAILED"
+    systemctl is-active --quiet mrssh-traffic && echo "  Traffic:   OK" || echo "  Traffic:   FAILED"
+    echo
+
+    echo "API:"
+    curl -fsS http://127.0.0.1:8080/api/health >/dev/null && echo "  Panel API: OK" || echo "  Panel API: FAILED"
+    curl -fsS http://127.0.0.1:8000/health >/dev/null && echo "  Backend:   OK" || echo "  Backend:   FAILED"
+
+    ENV_FILE=""
+    [ -f /opt/mrssh-agent/.env ] && ENV_FILE="/opt/mrssh-agent/.env"
+    [ -z "$ENV_FILE" ] && [ -f /opt/mrssh/.env ] && ENV_FILE="/opt/mrssh/.env"
+
+    if [ -n "$ENV_FILE" ]; then
+        SECRET=$(grep '^MRSSH_SECRET=' "$ENV_FILE" | cut -d= -f2-)
+        curl -fsS -H "X-Secret: $SECRET" http://127.0.0.1:9911/dashboard >/dev/null && echo "  Agent API: OK" || echo "  Agent API: FAILED"
+    else
+        echo "  Agent API: FAILED (.env missing)"
+    fi
+
+    echo
+    echo "Firewall:"
+    PANEL_PORT=$(grep '^MRSSH_WEB_BIND=' /opt/mrssh/.env 2>/dev/null | cut -d= -f2- | awk -F: '{print $NF}')
+    PANEL_PORT=${PANEL_PORT:-8080}
+
+    ufw status | grep -Eq "^${SSH_PORT}(/tcp)?[[:space:]]+ALLOW" && echo "  SSH Port:  OPEN" || echo "  SSH Port:  CHECK"
+    ufw status | grep -Eq "^${PANEL_PORT}(/tcp)?[[:space:]]+ALLOW" && echo "  Panel:     OPEN ($PANEL_PORT)" || echo "  Panel:     CHECK ($PANEL_PORT)"
+    ufw status | grep -Eq "^80(/tcp)?[[:space:]]+ALLOW" && echo "  HTTP:      OPEN" || echo "  HTTP:      CHECK"
+    ufw status | grep -Eq "^443(/tcp)?[[:space:]]+ALLOW" && echo "  HTTPS:     OPEN" || echo "  HTTPS:     CHECK"
+
+    echo
+    echo "System:"
+    echo "  Load:      $(cat /proc/loadavg | awk '{print $1, $2, $3}')"
+    echo "  RAM:       $(free -m | awk '/Mem:/ {print $3 "MB / " $2 "MB"}')"
+    echo "  Disk:      $(df -h / | awk 'NR==2 {print $3 " / " $2 " (" $5 ")"}')"
+    echo "  Uptime:    $(uptime -p)"
+    echo
+
+    if [ -f /opt/mrssh-agent/mrssh.db ]; then
+        USERS=$(sqlite3 /opt/mrssh-agent/mrssh.db "select count(*) from users_meta;" 2>/dev/null || echo 0)
+        echo "MRSSH:"
+        echo "  Tracked Users: $USERS"
+    fi
+
+    echo
+    echo "Health check completed"
 }
 
 install_ssl() {
@@ -368,7 +423,7 @@ while true; do
     echo "           MRSSH MENU"
     echo "=================================="
     echo
-    echo "1) Show Status"
+    echo "1) Show Status & Health Check"
     echo "2) Install SSL"
     echo "3) Restart Services"
     echo "4) Show Admin Info"
