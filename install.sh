@@ -93,7 +93,10 @@ cp "$APP_DIR/installer/systemd/"mrssh*.service /etc/systemd/system/
 cp "$APP_DIR/installer/systemd/"mrssh*.timer /etc/systemd/system/ 2>/dev/null || true
 
 systemctl daemon-reload
+systemctl stop mrssh-agent 2>/dev/null || true
+pkill -f /opt/mrssh-agent/agent.py 2>/dev/null || true
 systemctl enable --now mrssh-agent mrssh-traffic mrssh-limiter mrssh-expire mrssh-enforce
+sleep 2
 systemctl enable --now fail2ban || true
 systemctl restart fail2ban || true
 ufw allow 22/tcp || true
