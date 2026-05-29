@@ -60,6 +60,35 @@ chmod +x /usr/local/bin/mrssh-backup
 
 python3 "$AGENT_DIR/db_migrate.py"
 
+ADMIN_USER="$ADMIN_USER" ADMIN_PASS="$ADMIN_PASS" python3 - <<'PYADMIN'
+import os, sqlite3, hashlib, secrets, time
+
+DB="/opt/mrssh-agent/mrssh.db"
+username=os.environ.get("ADMIN_USER","admin")
+password=os.environ.get("ADMIN_PASS","")
+
+salt=secrets.token_hex(16)
+h=hashlib.sha256((salt+password).encode()).hexdigest()
+
+con=sqlite3.connect(DB)
+con.execute("""CREATE TABLE IF NOT EXISTS admin_auth (
+username TEXT PRIMARY KEY,
+password_hash TEXT NOT NULL,
+salt TEXT NOT NULL,
+updated_at INTEGER NOT NULL
+)""")
+con.execute("""INSERT INTO admin_auth(username,password_hash,salt,updated_at)
+VALUES(?,?,?,?)
+ON CONFLICT(username) DO UPDATE SET
+password_hash=excluded.password_hash,
+salt=excluded.salt,
+updated_at=excluded.updated_at
+""",(username,h,salt,int(time.time())))
+con.commit()
+con.close()
+print("Admin auth initialized:", username)
+PYADMIN
+
 cp "$APP_DIR/installer/systemd/"mrssh*.service /etc/systemd/system/
 cp "$APP_DIR/installer/systemd/"mrssh*.timer /etc/systemd/system/ 2>/dev/null || true
 
