@@ -142,6 +142,71 @@ change_ssh_port() {
     fi
 }
 
+
+
+update_mrssh() {
+    APP_DIR="/root/MRSSH"
+
+    if [ ! -d "$APP_DIR/.git" ]; then
+        echo "MRSSH git repo not found at $APP_DIR"
+        return
+    fi
+
+    echo "[UPDATE] Pulling latest code..."
+    cd "$APP_DIR" || return
+
+    git pull || {
+        echo "git pull failed"
+        return
+    }
+
+    echo "[UPDATE] Copying agent files..."
+    mkdir -p /opt/mrssh-agent
+    cp -r "$APP_DIR/installer/agent/"* /opt/mrssh-agent/
+
+    echo "[UPDATE] Installing mrssh command..."
+    install -m 755 "$APP_DIR/installer/bin/mrssh" /usr/local/bin/mrssh
+
+    echo "[UPDATE] Rebuilding backend..."
+    docker compose -f "$APP_DIR/docker-compose.yml" build backend || {
+        echo "Docker build failed"
+        return
+    }
+
+    docker compose -f "$APP_DIR/docker-compose.yml" up -d backend || {
+        echo "Backend restart failed"
+        return
+    }
+
+    echo "[UPDATE] Rebuilding frontend..."
+    docker build -t mrssh-frontend-static "$APP_DIR/frontend" || {
+        echo "Frontend build failed"
+        return
+    }
+
+    rm -rf /var/www/mrssh
+    mkdir -p /var/www/mrssh
+
+    docker rm -f mrssh-front-tmp >/dev/null 2>&1 || true
+    docker create --name mrssh-front-tmp mrssh-frontend-static >/dev/null
+    docker cp mrssh-front-tmp:/usr/share/nginx/html/. /var/www/mrssh/
+    docker rm mrssh-front-tmp >/dev/null
+
+    echo "[UPDATE] Restarting services..."
+    systemctl restart mrssh-agent mrssh-traffic mrssh-limiter mrssh-expire mrssh-enforce 2>/dev/null || true
+    systemctl reload nginx
+
+    echo "[CHECK] API..."
+    sleep 3
+    curl -fsS http://127.0.0.1:8080/api/health >/dev/null || {
+        echo "API health failed"
+        return
+    }
+
+    echo
+    echo "MRSSH updated successfully"
+}
+
 while true; do
     clear
 
@@ -155,6 +220,7 @@ while true; do
     echo "4) Show Admin Info"
     echo "5) Firewall Status"
     echo "6) Change SSH Port"
+    echo "7) Update MRSSH"
     echo "0) Exit"
     echo
 
@@ -167,6 +233,7 @@ while true; do
         4) show_admin_info ;;
         5) ufw status ;;
         6) change_ssh_port ;;
+        7) update_mrssh ;;
         0) exit 0 ;;
         *) echo "Invalid option" ;;
     esac
