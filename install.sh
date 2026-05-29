@@ -52,7 +52,6 @@ MRSSH_WEB_BIND=0.0.0.0:8080
 EOF
 
 cp "$APP_DIR/.env" "$AGENT_DIR/.env"
-cp "$APP_DIR/.env" /opt/mrssh/.env
 
 echo "[6/8] Installing agent..."
 cp "$APP_DIR/installer/agent/"*.py "$AGENT_DIR/"
