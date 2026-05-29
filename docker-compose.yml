@@ -2,22 +2,10 @@ services:
   backend:
     build: ./backend
     container_name: mrssh-v4-backend
-    ports:
-      - "127.0.0.1:8000:8000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    network_mode: host
     restart: unless-stopped
     env_file:
       - .env
     volumes:
       - /opt/mrssh-backups:/opt/mrssh-backups
       - /opt/mrssh-agent/mrssh.db:/opt/mrssh-agent/mrssh.db:rw
-
-  frontend:
-    build: ./frontend
-    container_name: mrssh-v4-frontend
-    ports:
-      - "${MRSSH_WEB_BIND:-0.0.0.0:8080}:80"
-    restart: unless-stopped
-    depends_on:
-      - backend

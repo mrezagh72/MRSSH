@@ -94,35 +94,62 @@ cp "$APP_DIR/installer/systemd/"mrssh*.timer /etc/systemd/system/ 2>/dev/null ||
 
 systemctl daemon-reload
 systemctl enable --now mrssh-agent mrssh-traffic mrssh-limiter mrssh-expire mrssh-enforce
+systemctl enable --now fail2ban || true
+systemctl restart fail2ban || true
 systemctl enable --now mrssh-backup.timer || true
 
-echo "[7/8] Starting panel..."
+echo "[7/8] Starting backend..."
 cd "$APP_DIR"
-if [ -n "$DOMAIN" ]; then
-  echo "[SSL] Configuring Nginx for $DOMAIN..."
-  cat > /etc/nginx/sites-available/mrssh <<EOF
-server {
-    listen 80;
-    server_name $DOMAIN;
+docker compose build
+docker compose up -d
 
-    location / {
-        proxy_pass http://127.0.0.1:8080;
+echo "[7/8] Building frontend static..."
+docker build -t mrssh-frontend-static ./frontend
+rm -rf /var/www/mrssh
+mkdir -p /var/www/mrssh
+docker create --name mrssh-front-tmp mrssh-frontend-static >/dev/null
+docker cp mrssh-front-tmp:/usr/share/nginx/html/. /var/www/mrssh/
+docker rm mrssh-front-tmp >/dev/null
+
+echo "[7/8] Configuring Nginx..."
+if [ -n "$DOMAIN" ]; then
+  SERVER_NAME="$DOMAIN"
+else
+  SERVER_NAME="_"
+fi
+
+cat > /etc/nginx/sites-available/mrssh <<EOF
+server {
+    listen 8080;
+    server_name $SERVER_NAME;
+
+    root /var/www/mrssh;
+    index index.html;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/;
         proxy_http_version 1.1;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 30s;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
+
+    location / {
+        try_files \$uri /index.html;
+    }
 }
 EOF
-  ln -sf /etc/nginx/sites-available/mrssh /etc/nginx/sites-enabled/mrssh
-  nginx -t
-  systemctl reload nginx
+
+ln -sf /etc/nginx/sites-available/mrssh /etc/nginx/sites-enabled/mrssh
+nginx -t
+systemctl restart nginx
+
+if [ -n "$DOMAIN" ]; then
   certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" || true
 fi
-
-docker compose build
-docker compose up -d
 
 echo "[8/8] Done"
 echo ""
