@@ -13,7 +13,7 @@ app.add_middleware(
 )
 
 TOKENS = {}
-AGENT = "http://127.0.0.1:9911"
+AGENT = "http://host.docker.internal:9911"
 SECRET = os.getenv("MRSSH_SECRET", "change-me")
 
 DB="/opt/mrssh-agent/mrssh.db"
