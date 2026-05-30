@@ -7,6 +7,19 @@ BACKUP_DIR="/opt/mrssh-backups"
 
 echo "=== MRSSH Installer ==="
 
+SSH_PORT="${SSH_PORT:-}"
+UDPGW_PORT="${UDPGW_PORT:-}"
+
+if [ -z "$SSH_PORT" ]; then
+  read -p "SSH Port for user configs [22]: " SSH_PORT
+  SSH_PORT="${SSH_PORT:-22}"
+fi
+
+if [ -z "$UDPGW_PORT" ]; then
+  read -p "UDPGW Port for calls [7301]: " UDPGW_PORT
+  UDPGW_PORT="${UDPGW_PORT:-7301}"
+fi
+
 if [ "$(id -u)" -ne 0 ]; then
   echo "Run as root"
   exit 1
@@ -89,6 +102,27 @@ con.close()
 print("Admin auth initialized:", username)
 PYADMIN
 
+SSH_PORT="$SSH_PORT" UDPGW_PORT="$UDPGW_PORT" python3 - <<'PYSETTINGS'
+import os, sqlite3, time
+DB="/opt/mrssh-agent/mrssh.db"
+con=sqlite3.connect(DB)
+con.execute("""CREATE TABLE IF NOT EXISTS settings (
+key TEXT PRIMARY KEY,
+value TEXT
+)""")
+for k,v in {
+    "sshPort": os.environ.get("SSH_PORT","22"),
+    "udpgwPort": os.environ.get("UDPGW_PORT","7301"),
+}.items():
+    con.execute("""
+    INSERT INTO settings(key,value) VALUES(?,?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value
+    """,(k,v))
+con.commit()
+con.close()
+print("Settings initialized: sshPort=%s udpgwPort=%s" % (os.environ.get("SSH_PORT","22"), os.environ.get("UDPGW_PORT","7301")))
+PYSETTINGS
+
 cp "$APP_DIR/installer/systemd/"mrssh*.service /etc/systemd/system/
 cp "$APP_DIR/installer/systemd/"mrssh*.timer /etc/systemd/system/ 2>/dev/null || true
 
@@ -111,6 +145,7 @@ ufw allow 22/tcp || true
 ufw allow 80/tcp || true
 ufw allow 443/tcp || true
 ufw allow 8080/tcp || true
+ufw allow "$UDPGW_PORT/udp" || true
 ufw --force enable || true
 systemctl enable --now mrssh-backup.timer || true
 
@@ -193,5 +228,7 @@ else
 fi
 echo "Username: $ADMIN_USER"
 echo "Password: $ADMIN_PASS"
+echo "SSH Port: $SSH_PORT"
+echo "UDPGW Port: $UDPGW_PORT"
 echo ""
 echo "For domain + SSL, configure Nginx and Certbot after install."
