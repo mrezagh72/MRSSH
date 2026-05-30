@@ -416,6 +416,95 @@ PYADMIN
     echo "Admin password updated successfully"
 }
 
+
+
+get_udpgw_port() {
+    sqlite3 /opt/mrssh-agent/mrssh.db "select value from settings where key='udpgwPort';" 2>/dev/null | head -1
+}
+
+install_udpgw() {
+    PORT=$(get_udpgw_port)
+    PORT=${PORT:-7301}
+
+    echo "UDPGW Port: $PORT"
+    read -p "Use this port? (Y/n): " A
+
+    if [ "$A" = "n" ] || [ "$A" = "N" ]; then
+        read -p "New UDPGW Port [7301]: " PORT
+        PORT=${PORT:-7301}
+    fi
+
+    if ! echo "$PORT" | grep -Eq '^[0-9]+$'; then
+        echo "Invalid port"
+        return
+    fi
+
+    if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+        echo "Port out of range"
+        return
+    fi
+
+    echo "[UDPGW] Installing dependencies..."
+    apt-get update
+    apt-get install -y build-essential cmake git
+
+    TMP="/tmp/badvpn-build"
+    rm -rf "$TMP"
+    git clone https://github.com/ambrop72/badvpn.git "$TMP" || {
+        echo "Failed to clone badvpn"
+        return
+    }
+
+    mkdir -p "$TMP/build"
+    cd "$TMP/build" || return
+
+    cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 || {
+        echo "cmake failed"
+        return
+    }
+
+    make -j"$(nproc)" || {
+        echo "build failed"
+        return
+    }
+
+    install -m 755 udpgw/badvpn-udpgw /usr/local/bin/badvpn-udpgw
+
+    cat > /etc/systemd/system/mrssh-udpgw.service <<EOFSVC
+[Unit]
+Description=MRSSH BadVPN UDPGW
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/badvpn-udpgw --listen-addr 0.0.0.0:$PORT --max-clients 4096 --max-connections-for-client 256
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOFSVC
+
+    ufw allow "$PORT/udp" || true
+
+    sqlite3 /opt/mrssh-agent/mrssh.db "
+    CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+    INSERT INTO settings(key,value) VALUES('udpgwPort','$PORT')
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value;
+    "
+
+    systemctl daemon-reload
+    systemctl enable --now mrssh-udpgw
+    systemctl restart mrssh-udpgw
+
+    echo
+    systemctl status mrssh-udpgw --no-pager -l
+    echo
+    echo "UDPGW installed:"
+    echo "Port: $PORT/udp"
+}
+
 while true; do
     clear
 
@@ -433,6 +522,7 @@ while true; do
     echo "8) Backup MRSSH"
     echo "9) Restore Backup"
     echo "10) Change Admin Password"
+    echo "11) Install/Restart UDPGW"
     echo "0) Exit"
     echo
 
@@ -449,6 +539,7 @@ while true; do
         8) backup_mrssh ;;
         9) restore_mrssh ;;
         10) change_admin_password ;;
+        11) install_udpgw ;;
         0) exit 0 ;;
         *) echo "Invalid option" ;;
     esac
