@@ -89,7 +89,7 @@ function userConfigText(u:any, settings:any){
     'SSH Port: ' + port,
     'Username: ' + (u.username || ''),
     'Password: ' + pass,
-    'UDPGW: ' + host + ':' + udpgwPort,
+    'UDPGW Port: ' + udpgwPort,
     'Expire: ' + (u.expire || ''),
     'Days Left: ' + daysLeft(u.expire),
     'Traffic: ' + (u.trafficUsedText || '0 KB') + ' / ' + (u.trafficLimitText || 'unlimited')
