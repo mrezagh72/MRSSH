@@ -81,13 +81,15 @@ function copyText(txt:string){
 function userConfigText(u:any, settings:any){
   const host = String((settings && settings.publicHost) || window.location.hostname || 'SERVER_HOST').trim()
   const port = String((settings && settings.sshPort) || '22').trim()
+  const udpgwPort = String((settings && settings.udpgwPort) || '7301').trim()
   const pass = u.passwordPlain
 
   return [
     'Host: ' + host,
-    'Port: ' + port,
+    'SSH Port: ' + port,
     'Username: ' + (u.username || ''),
     'Password: ' + pass,
+    'UDPGW: ' + host + ':' + udpgwPort,
     'Expire: ' + (u.expire || ''),
     'Days Left: ' + daysLeft(u.expire),
     'Traffic: ' + (u.trafficUsedText || '0 KB') + ' / ' + (u.trafficLimitText || 'unlimited')

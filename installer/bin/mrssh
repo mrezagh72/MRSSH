@@ -22,6 +22,16 @@ show_status() {
     systemctl is-active --quiet fail2ban && echo "  Fail2Ban:  OK" || echo "  Fail2Ban:  FAILED"
     systemctl is-active --quiet mrssh-agent && echo "  Agent:     OK" || echo "  Agent:     FAILED"
     systemctl is-active --quiet mrssh-traffic && echo "  Traffic:   OK" || echo "  Traffic:   FAILED"
+
+    UDPGW_PORT=$(sqlite3 /opt/mrssh-agent/mrssh.db "select value from settings where key='udpgwPort';" 2>/dev/null | head -1)
+    UDPGW_PORT=${UDPGW_PORT:-7301}
+
+    if systemctl is-active --quiet mrssh-udpgw; then
+        echo "  UDPGW:     OK ($UDPGW_PORT)"
+    else
+        echo "  UDPGW:     NOT INSTALLED ($UDPGW_PORT)"
+    fi
+
     echo
 
     echo "API:"
