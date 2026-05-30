@@ -486,6 +486,7 @@ User=root
 WantedBy=multi-user.target
 EOFSVC
 
+    ufw allow "$PORT/tcp" || true
     ufw allow "$PORT/udp" || true
 
     sqlite3 /opt/mrssh-agent/mrssh.db "
